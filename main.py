@@ -45,19 +45,20 @@ def login(datos: dict):
     username = datos.get("username")
     password = datos.get("password")
     
-    # Buscamos primero en la base de datos real
-    db = SessionLocal()
-    try:
-        user_db = db.query(Usuario).filter(Usuario.username == username).first()
-        
-        # Si existe en la BD y la clave coincide (o si es el usuario de prueba directo)
-        if user_db and (user_db.password_hash == password or password == "123"):
-            return {"id": user_db.id, "nombre": user_db.nombre, "rol": user_db.rol}
-            
-        # Respaldo de emergencia por si la base de datos está bloqueada
-        if username == "coord1" and password == "123":
-            return {"id": 3, "nombre": "Pedro Coordinador", "rol": "coordinador"}
-            
-        raise HTTPException(status_code=400, detail="Credenciales inválidas")
-    finally:
-        db.close()
+    # Lista de respaldo directa para pruebas en internet
+    usuarios_dict = {
+        "tecnico1": {"id": 1, "nombre": "Carlos Técnico", "rol": "tecnico", "clave": "123"},
+        "super1": {"id": 2, "nombre": "Laura Supervisora", "rol": "supervisor", "clave": "123"},
+        "coord1": {"id": 3, "nombre": "Pedro Coordinador", "rol": "coordinador", "clave": "123"},
+        "gerente1": {"id": 4, "nombre": "Elena Gerente", "rol": "gerente", "clave": "123"}
+    }
+    
+    if username in usuarios_dict and usuarios_dict[username]["clave"] == password:
+        return {
+            "id": usuarios_dict[username]["id"],
+            "nombre": usuarios_dict[username]["nombre"],
+            "rol": usuarios_dict[username]["rol"]
+        }
+    
+    from fastapi import HTTPException
+    raise HTTPException(status_code=400, detail="Credenciales inválidas")
