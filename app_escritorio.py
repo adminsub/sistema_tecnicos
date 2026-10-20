@@ -1,105 +1,181 @@
-import flet as ft
+import tkinter as tk
+from tkinter import messagebox, ttk
 import requests
-import time
-import threading
-import webbrowser
 
+# 1. Dirección única y directa a tu servidor en la nube (Render)
 API_URL = "https://onrender.com"
 
-USER_SESSION = {}
+# Variables globales para almacenar los datos del usuario que inicia sesión
+usuario_actual = None
 
-def main(page: ft.Page):
-    page.title = "Mesa de Control - Sistema de Control de Técnicos de Campo"
-    page.window_width = 950
-    page.window_height = 700
+def abrir_panel_central_azul(datos_usuario):
+    """Abre la ventana principal del sistema (Panel Administrativo Azul)"""
+    global usuario_actual
+    usuario_actual = datos_usuario
+
+    # Crear ventana del Panel Principal
+    ventana_panel = tk.Tk()
+    ventana_panel.title("Mesa de Control - Sistema de Gestión de Técnicos")
+    ventana_panel.geometry("900x600")
+    ventana_panel.configure(bg="#1e3a8a")  # Color azul administrativo
+
+    # --- ENCABEZADO ---
+    frame_header = tk.Frame(ventana_panel, bg="#111827", height=70)
+    frame_header.pack(fill="x")
+    frame_header.pack_propagate(False)
+
+    lbl_titulo = tk.Label(
+        frame_header, 
+        text="PANEL CENTRAL DE CONTROL DE OPERACIONES", 
+        fg="white", 
+        bg="#111827", 
+        font=("Arial", 16, "bold")
+    )
+    lbl_titulo.pack(side="left", padx=20, pady=15)
+
+    lbl_user = tk.Label(
+        frame_header, 
+        text=f"Sesión: {datos_usuario['nombre']} ({datos_usuario['rol'].upper()})", 
+        fg="#60a5fa", 
+        bg="#111827", 
+        font=("Arial", 10, "bold")
+    )
+    lbl_user.pack(side="right", padx=20, pady=20)
+
+    # --- CONTENIDO / TABLA DE ÓRDENES ---
+    frame_cuerpo = tk.Frame(ventana_panel, bg="#1e3a8a")
+    frame_cuerpo.pack(fill="both", expand=True, padx=30, pady=30)
+
+    lbl_sub = tk.Label(
+        frame_cuerpo, 
+        text="Órdenes de Trabajo en Campo", 
+        fg="white", 
+        bg="#1e3a8a", 
+        font=("Arial", 14, "bold")
+    )
+    lbl_sub.pack(anchor="w", pady=(0, 10))
+
+    # Estilo para la tabla de datos
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure("Treeview", background="#ffffff", foreground="#000000", rowheight=25, fieldbackground="#ffffff")
+    style.configure("Treeview.Heading", background="#f3f4f6", foreground="#111827", font=("Arial", 10, "bold"))
+
+    # Crear tabla (Treeview)
+    columnas = ("id", "cliente", "tecnico", "estado", "fecha")
+    tabla = ttk.Treeview(frame_cuerpo, columns=columnas, show="headings", height=12)
     
-    txt_user = ft.TextField(label="Usuario")
-    txt_pass = ft.TextField(label="Contraseña", password=True, can_reveal_password=True)
+    tabla.heading("id", text="N° Orden")
+    tabla.heading("cliente", text="Cliente / Dirección")
+    tabla.heading("tecnico", text="Técnico Asignado")
+    tabla.heading("estado", text="Estado")
+    tabla.heading("fecha", text="Fecha Creación")
+
+    tabla.column("id", width=80, anchor="center")
+    tabla.column("cliente", width=300, anchor="w")
+    tabla.column("tecnico", width=180, anchor="w")
+    tabla.column("estado", width=120, anchor="center")
+    tabla.column("fecha", width=120, anchor="center")
     
-    tabla = ft.DataTable(columns=[
-        ft.DataColumn(ft.Text("ID")), ft.DataColumn(ft.Text("Cliente")),
-        ft.DataColumn(ft.Text("Estado")), ft.DataColumn(ft.Text("Mapa"))
-    ], rows=[])
-    
-    txt_cli = ft.TextField(label="Cliente", expand=True)
-    txt_dir = ft.TextField(label="Dirección", expand=True)
-    txt_desc = ft.TextField(label="Falla/Trabajo", expand=True)
-    txt_tec_id = ft.TextField(label="ID Técnico", width=120)
-    
-    def cargar_datos_bucle():
-        while True:
-            if "rol" in USER_SESSION:
-                try:
-                    res = requests.get(f"{API_URL}/ordenes/?rol={USER_SESSION['rol']}&usuario_id={USER_SESSION['id']}")
-                    if res.status_code == 200:
-                        tabla.rows.clear()
-                        for o in res.json():
-                            btn_mapa = ft.Text("Sin GPS")
-                            if o['latitud'] and o['longitud']:
-                                url = f"https://google.com{o['latitud']},{o['longitud']}"
-                                btn_mapa = ft.IconButton(ft.icons.LOCATION_ON, icon_color="red", on_click=lambda e, u=url: webbrowser.open(u))
-                            tabla.rows.append(ft.DataRow(cells=[
-                                ft.DataCell(ft.Text(str(o['id']))), ft.DataCell(ft.Text(o['cliente'])),
-                                ft.DataCell(ft.Text(o['estado'], weight="bold")), ft.DataCell(btn_mapa)
-                            ]))
-                        page.update()
-                except: pass
-            time.sleep(10)
+    tabla.pack(fill="both", expand=True)
 
-    def ejecutar_login(e):
-        try:
-            res = requests.post(f"{API_URL}/login", json={"username": txt_user.value, "password": txt_pass.value})
-            if res.status_code == 200:
-                data = res.json()
-                USER_SESSION["id"], USER_SESSION["rol"], USER_SESSION["nombre"] = data["id"], data["rol"], data["nombre"]
-                if USER_SESSION["rol"] == "tecnico":
-                    page.snack_bar = ft.SnackBar(ft.Text("Los técnicos deben usar la App Móvil"), bgcolor="red")
-                    page.snack_bar.open = True
-                    page.update()
-                    return
-                mostrar_panel_principal()
-            else:
-                page.snack_bar = ft.SnackBar(ft.Text("Credenciales inválidas o usuario incorrecto"), bgcolor="red")
-                page.snack_bar.open = True
-                page.update()
-        except Exception as error:
-            print(f"⚠️ DETALLE DEL ERROR: {error}")
-            page.snack_bar = ft.SnackBar(ft.Text("No se pudo conectar con el servidor de internet"), bgcolor="orange")
-            page.snack_bar.open = True
-            page.update()
+    # Insertar datos simulados iniciales para que no se vea vacío el panel azul
+    tabla.insert("", "end", values=("101", "Distribuidora San Juan - Av. Bolívar", "Carlos Técnico", "Asignado", "19/10/2026"))
+    tabla.insert("", "end", values=("102", "Residencias El Faro - Apto 4B", "Pendiente", "Abierta", "19/10/2026"))
 
-    def guardar_orden(e):
-        payload = {"cliente": txt_cli.value, "direccion": txt_dir.value, "descripcion": txt_desc.value, "tecnico_id": int(txt_tec_id.value) if txt_tec_id.value else None}
-        requests.post(f"{API_URL}/ordenes/?creador_rol={USER_SESSION['rol']}", json=payload)
-        txt_cli.value = txt_dir.value = txt_desc.value = txt_tec_id.value = ""
-        page.update()
+    # --- BOTONES DE ACCIÓN ---
+    frame_botones = tk.Frame(frame_cuerpo, bg="#1e3a8a")
+    frame_botones.pack(fill="x", pady=(20, 0))
 
-    def mostrar_panel_principal():
-        page.views.clear()
-        deshabilitar_creacion = USER_SESSION["rol"] not in ["coordinador", "gerente"]
-        
-        form_container = ft.Container(
-            padding=15, bgcolor=ft.colors.GREY_100, border_radius=10, disabled=deshabilitar_creacion,
-            content=ft.Column([
-                ft.Text("Nueva Orden de Trabajo (Solo Coordinación/Gerencia)", weight="bold"),
-                ft.Row([txt_cli, txt_tec_id]), ft.Row([txt_dir]), ft.Row([txt_desc]),
-                ft.ElevatedButton("Asignar Tarea", on_click=guardar_orden, bgcolor="blue", color="white")
-            ])
-        )
-        
-        page.views.append(ft.View("/panel", [
-            ft.AppBar(title=ft.Text(f"Panel Central - {USER_SESSION['nombre']} ({USER_SESSION['rol'].upper()})"), bgcolor="blue"),
-            form_container,
-            ft.Text("Monitoreo de Actividad de Campo", weight="bold"),
-            ft.Container(content=tabla, expand=True, scroll=ft.ScrollMode.ALWAYS)
-        ]))
-        page.update()
+    btn_nueva = tk.Button(
+        frame_botones, text="+ Crear Nueva Orden", bg="#10b981", fg="white", 
+        font=("Arial", 10, "bold"), padx=15, pady=8, bd=0, cursor="hand2"
+    )
+    btn_nueva.pack(side="left", padx=(0, 10))
 
-    threading.Thread(target=cargar_datos_bucle, daemon=True).start()
+    btn_actualizar = tk.Button(
+        frame_botones, text="🔄 Refrescar Datos", bg="#3b82f6", fg="white", 
+        font=("Arial", 10, "bold"), padx=15, pady=8, bd=0, cursor="hand2"
+    )
+    btn_actualizar.pack(side="left")
 
-    page.add(ft.Container(alignment=ft.alignment.center, content=ft.Column([
-        ft.Text("Mesa de Control - Acceso Administrativo", size=20, weight="bold"),
-        txt_user, txt_pass, ft.ElevatedButton("Entrar al Sistema", on_click=ejecutar_login, width=200)
-    ], horizontal_alignment="center")))
+    ventana_panel.mainloop()
 
-ft.app(target=main)
+
+def verificar_ingreso():
+    """Valida los datos contra el servidor en la nube de Render"""
+    user = entrada_usuario.get().strip()
+    pas = entrada_contra.get().strip()
+
+    if not user or not pas:
+        messagebox.showwarning("Campos Vacíos", "Por favor ingresa tu usuario y contraseña.")
+        return
+
+    try:
+        # Enviamos las credenciales en formato JSON plano directo al endpoint de login
+        datos_enviar = {"username": user, "password": pas}
+        respuesta = requests.post(f"{API_URL}/login", json=datos_enviar, timeout=10)
+
+        if respuesta.status_code == 200:
+            datos_usuario = respuesta.json()
+            messagebox.showinfo("Acceso Concedido", f"¡Bienvenido al sistema, {datos_usuario['nombre']}!")
+            
+            # Cerrar la ventana de Login y abrir el panel administrativo azul
+            ventana_login.destroy()
+            abrir_panel_central_azul(datos_usuario)
+        else:
+            messagebox.showerror("Error de Credenciales", "Usuario o contraseña incorrectos. Verifica e intenta de nuevo.")
+            
+    except requests.exceptions.Timeout:
+        messagebox.showerror("Error de Tiempo", "El servidor de Render está despertando (demora un minuto en el plan gratuito). Por favor, intenta de nuevo en unos segundos.")
+    except Exception as e:
+        messagebox.showerror("Error de Conexión", f"No se pudo conectar al servidor de Render:\n{e}")
+
+
+# ==========================================
+# INTERFAZ VISUAL DE LOGIN (Tkinter)
+# ==========================================
+ventana_login = tk.Tk()
+ventana_login.title("Inicio de Sesión - Mesa de Control")
+ventana_login.geometry("400x450")
+ventana_login.configure(bg="#f3f4f6")
+ventana_login.resizable(False, False)
+
+# Contenedor central blanco
+frame_login = tk.Frame(ventana_login, bg="white", padx=30, pady=30, bd=1, relief="solid")
+frame_login.place(relx=0.5, rely=0.5, anchor="center", width=340, height=380)
+
+lbl_login_tit = tk.Label(frame_login, text="SISTEMA DE GESTIÓN", font=("Arial", 14, "bold"), bg="white", fg="#111827")
+lbl_login_tit.pack(pady=(0, 5))
+lbl_login_sub = tk.Label(frame_login, text="Inicia sesión para continuar", font=("Arial", 9), bg="white", fg="#6b7280")
+lbl_login_sub.pack(pady=(0, 25))
+
+# Campo: Usuario
+lbl_u = tk.Label(frame_login, text="Usuario:", font=("Arial", 10, "bold"), bg="white", anchor="w")
+lbl_u.pack(fill="x")
+entrada_usuario = tk.Entry(frame_login, font=("Arial", 11), bd=1, relief="solid", bg="#f9fafb")
+entrada_usuario.pack(fill="x", ipady=4, pady=(5, 15))
+entrada_usuario.insert(0, "coord1")  # Usuario predeterminado para pruebas rápidas
+
+# Campo: Contraseña
+lbl_p = tk.Label(frame_login, text="Contraseña:", font=("Arial", 10, "bold"), bg="white", anchor="w")
+lbl_p.pack(fill="x")
+entrada_contra = tk.Entry(frame_login, font=("Arial", 11), show="*", bd=1, relief="solid", bg="#f9fafb")
+entrada_contra.pack(fill="x", ipady=4, pady=(5, 25))
+entrada_contra.insert(0, "123")  # Contraseña predeterminada para pruebas rápidas
+
+# Botón Entrar
+btn_entrar = tk.Button(
+    frame_login, 
+    text="Entrar al Sistema", 
+    bg="#2563eb", 
+    fg="white", 
+    font=("Arial", 11, "bold"), 
+    bd=0, 
+    command=verificar_ingreso,
+    cursor="hand2"
+)
+btn_entrar.pack(fill="x", ipady=6)
+
+# Ejecutar el programa
+ventana_login.mainloop()
