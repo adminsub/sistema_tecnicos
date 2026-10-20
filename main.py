@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from database import crear_base_de_datos, SessionLocal, Usuario
 
@@ -9,7 +9,7 @@ crear_base_de_datos()
 # 2. Inicializar la aplicación con el nombre exacto que busca Render
 app = FastAPI(title="Sistema de Control de Técnicos de Campo")
 
-# 3. Habilitar permisos CORS para que tu PC pueda conectarse sin bloqueos
+# 3. Habilitar permisos CORS para la conexión con tu PC
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -41,4 +41,24 @@ finally:
 def read_root():
     return {"status": "ok", "message": "Servidor de Técnicos activo en Render"}
 
-# Incluye aquí abajo tus rutas existentes de @app.post("/login") y @app.get("/ordenes/") si las tienes
+# 6. RUTA DE LOGIN FIJA PARA PRUEBAS (Evita el error de credenciales)
+@app.post("/login")
+def login(datos: dict):
+    username = datos.get("username")
+    password = datos.get("password")
+    
+    usuarios_dict = {
+        "tecnico1": {"id": 1, "nombre": "Carlos Técnico", "rol": "tecnico", "clave": "123"},
+        "super1": {"id": 2, "nombre": "Laura Supervisora", "rol": "supervisor", "clave": "123"},
+        "coord1": {"id": 3, "nombre": "Pedro Coordinador", "rol": "coordinador", "clave": "123"},
+        "gerente1": {"id": 4, "nombre": "Elena Gerente", "rol": "gerente", "clave": "123"}
+    }
+    
+    if username in usuarios_dict and usuarios_dict[username]["clave"] == password:
+        return {
+            "id": usuarios_dict[username]["id"],
+            "nombre": usuarios_dict[username]["nombre"],
+            "rol": usuarios_dict[username]["rol"]
+        }
+    
+    raise HTTPException(status_code=400, detail="Credenciales inválidas")

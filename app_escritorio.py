@@ -4,7 +4,8 @@ import time
 import threading
 import webbrowser
 
-API_URL = "https://pythonanywhere.com"
+API_URL = "https://onrender.com"
+
 USER_SESSION = {}
 
 def main(page: ft.Page):
