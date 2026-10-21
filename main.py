@@ -3,12 +3,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from database import crear_base_de_datos, SessionLocal, Usuario
 
-# 1. Asegurar creación de base de datos
+# Asegurar la creación de las tablas en la nube
 crear_base_de_datos()
 
 app = FastAPI(title="Sistema de Control de Técnicos")
 
-# 2. Permisos de conexión abiertos para tu PC
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,48 +16,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 3. Inyectar usuarios directamente a la base de datos limpia de Render
-db = SessionLocal()
-try:
-    usuarios_iniciales = [
-        {"nombre": "Carlos Técnico", "username": "tecnico1", "password_hash": "123", "rol": "tecnico"},
-        {"nombre": "Laura Supervisora", "username": "super1", "password_hash": "123", "rol": "supervisor"},
-        {"nombre": "Pedro Coordinador", "username": "coord1", "password_hash": "123", "rol": "coordinador"},
-        {"nombre": "Elena Gerente", "username": "gerente1", "password_hash": "123", "rol": "gerente"}
-    ]
-    for u in usuarios_iniciales:
-        existe = db.query(Usuario).filter(Usuario.username == u["username"]).first()
-        if not existe:
-            nuevo_usuario = Usuario(**u)
-            db.add(nuevo_usuario)
-    db.commit()
-finally:
-    db.close()
-
 @app.get("/")
 def read_root():
     return {"status": "ok", "message": "Servidor Activo"}
 
-# 4. EL LOGIN DEFINITIVO CORREGIDO
+# --- EL LOGIN CON RESPALDO ABSOLUTO PARA EVITAR EL REBOTE ---
 @app.post("/login")
 def login(datos: dict):
     username = datos.get("username")
     password = datos.get("password")
     
-    # Lista de respaldo directa para pruebas en internet
-    usuarios_dict = {
+    # 1. Respaldo directo en memoria (Si esto coincide, pasas SÍ O SÍ)
+    usuarios_prueba = {
         "tecnico1": {"id": 1, "nombre": "Carlos Técnico", "rol": "tecnico", "clave": "123"},
         "super1": {"id": 2, "nombre": "Laura Supervisora", "rol": "supervisor", "clave": "123"},
         "coord1": {"id": 3, "nombre": "Pedro Coordinador", "rol": "coordinador", "clave": "123"},
         "gerente1": {"id": 4, "nombre": "Elena Gerente", "rol": "gerente", "clave": "123"}
     }
     
-    if username in usuarios_dict and usuarios_dict[username]["clave"] == password:
+    if username in usuarios_prueba and usuarios_prueba[username]["clave"] == password:
         return {
-            "id": usuarios_dict[username]["id"],
-            "nombre": usuarios_dict[username]["nombre"],
-            "rol": usuarios_dict[username]["rol"]
+            "id": usuarios_prueba[username]["id"],
+            "nombre": usuarios_prueba[username]["nombre"],
+            "rol": usuarios_prueba[username]["rol"]
         }
-    
-    from fastapi import HTTPException
+        
+    # 2. Si no es de prueba, buscar en la base de datos física
+    db = SessionLocal()
+    try:
+        user_db = db.query(Usuario).filter(Usuario.username == username).first()
+        if user_db and user_db.password_hash == password:
+            return {"id": user_db.id, "nombre": user_db.nombre, "rol": user_db.rol}
+    finally:
+        db.close()
+        
     raise HTTPException(status_code=400, detail="Credenciales inválidas")

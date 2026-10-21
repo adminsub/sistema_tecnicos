@@ -4,7 +4,7 @@ import time
 import threading
 import webbrowser
 
-# 1. CONEXIÓN REAL A TU NUEVO SERVIDOR DE INTERNET EN RENDER
+# 1. Dirección real de tu servidor en Render
 API_URL = "https://onrender.com"
 USER_SESSION = {}
 
@@ -13,15 +13,17 @@ def main(page: ft.Page):
     page.window_width = 950
     page.window_height = 700
     
-    # --- TUS COMPONENTES VISUALES ORIGINALES INTACTOS ---
-    txt_user = ft.TextField(label="Usuario")
-    txt_pass = ft.TextField(label="Contraseña", password=True, can_reveal_password=True)
+    # --- TU DISEÑO ORIGINAL DE CAMPOS DE ACCESO (Asignados correctamente a variables) ---
+    txt_user = ft.TextField(label="Usuario", value="coord1")
+    txt_pass = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, value="123")
     
+    # Tabla de monitoreo original
     tabla = ft.DataTable(columns=[
         ft.DataColumn(ft.Text("ID")), ft.DataColumn(ft.Text("Cliente")),
         ft.DataColumn(ft.Text("Estado")), ft.DataColumn(ft.Text("Mapa"))
     ], rows=[])
     
+    # Campos del formulario original
     txt_cli = ft.TextField(label="Cliente", expand=True)
     txt_dir = ft.TextField(label="Dirección", expand=True)
     txt_desc = ft.TextField(label="Falla/Trabajo", expand=True)
@@ -31,7 +33,6 @@ def main(page: ft.Page):
         while True:
             if "rol" in USER_SESSION:
                 try:
-                    # Conexión adaptada hacia las rutas de Render
                     res = requests.get(f"{API_URL}/ordenes/?rol={USER_SESSION['rol']}&usuario_id={USER_SESSION['id']}")
                     if res.status_code == 200:
                         tabla.rows.clear()
@@ -49,12 +50,15 @@ def main(page: ft.Page):
             time.sleep(10)
 
     def ejecutar_login(e):
+        # Corrección de captura: Forzar a Flet a leer el texto actual ingresado en la pantalla
+        usuario_tipeado = txt_user.value.strip()
+        contra_tipeada = txt_pass.value.strip()
+        
         try:
-            # Enviamos los datos al endpoint de login en Render
-            res = requests.post(f"{API_URL}/login", json={"username": txt_user.value, "password": txt_pass.value}, timeout=10)
+            # Enviamos el JSON limpio con los datos reales capturados
+            res = requests.post(f"{API_URL}/login", json={"username": usuario_tipeado, "password": contra_tipeada}, timeout=10)
             if res.status_code == 200:
                 data = res.json()
-                # Sincronización exacta con el diccionario que devuelve Render
                 USER_SESSION["id"] = data["id"]
                 USER_SESSION["rol"] = data["rol"]
                 USER_SESSION["nombre"] = data["nombre"]
@@ -66,13 +70,11 @@ def main(page: ft.Page):
                     return
                 mostrar_panel_principal()
             else:
-                # Tu SnackBar roja original de error
                 page.snack_bar = ft.SnackBar(ft.Text("Credenciales inválidas o usuario incorrecto"), bgcolor="red")
                 page.snack_bar.open = True
                 page.update()
         except Exception as error:
-            print(f"⚠️ DETALLE DEL ERROR: {error}")
-            # Tu SnackBar naranja original de caída de red
+            print(f"⚠️ DETALLE DEL ERROR DE RED: {error}")
             page.snack_bar = ft.SnackBar(ft.Text("No se pudo conectar con el servidor de internet"), bgcolor="orange")
             page.snack_bar.open = True
             page.update()
@@ -87,7 +89,6 @@ def main(page: ft.Page):
         page.views.clear()
         deshabilitar_creacion = USER_SESSION["rol"] not in ["coordinador", "gerente"]
         
-        # --- TU CONTENEDOR GRIS DE FORMULARIO ORIGINAL INTACTO ---
         form_container = ft.Container(
             padding=15, bgcolor=ft.colors.GREY_100, border_radius=10, disabled=deshabilitar_creacion,
             content=ft.Column([
@@ -97,7 +98,6 @@ def main(page: ft.Page):
             ])
         )
         
-        # --- TU VISTA CON APBAR AZUL ORIGINAL INTACTA ---
         page.views.append(ft.View("/panel", [
             ft.AppBar(title=ft.Text(f"Panel Central - {USER_SESSION['nombre']} ({USER_SESSION['rol'].upper()})"), bgcolor="blue"),
             form_container,
@@ -106,10 +106,9 @@ def main(page: ft.Page):
         ]))
         page.update()
 
-    # Iniciar el hilo de fondo original
     threading.Thread(target=cargar_datos_bucle, daemon=True).start()
 
-    # --- TU PANTALLA DE ACCESO CENTRALIZADA ORIGINAL INTACTA ---
+    # --- TU INTERFAZ DE ENTRADA ORIGINAL CON ACCESO CENTRALIZADO ---
     page.add(ft.Container(alignment=ft.alignment.center, content=ft.Column([
         ft.Text("Mesa de Control - Acceso Administrativo", size=20, weight="bold"),
         txt_user, txt_pass, ft.ElevatedButton("Entrar al Sistema", on_click=ejecutar_login, width=200)
