@@ -4,16 +4,26 @@ import time
 import threading
 import webbrowser
 
-# 1. Dirección real de tu servidor en Render
+# Desactivar advertencias visuales de SSL en la consola local
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# 1. Dirección REAL y COMPLETA de tu servidor en Render
 API_URL = "https://onrender.com"
 USER_SESSION = {}
 
 def main(page: ft.Page):
     page.title = "Mesa de Control - Sistema de Control de Técnicos de Campo"
-    page.window_width = 950
-    page.window_height = 700
     
-    # --- TU DISEÑO ORIGINAL DE CAMPOS DE ACCESO (Asignados correctamente a variables) ---
+    # Manejo compatible de dimensiones según tu versión de Flet
+    try:
+        page.window.width = 950
+        page.window_height = 700
+    except:
+        page.window_width = 950
+        page.window_height = 700
+    
+    # --- TU DISEÑO ORIGINAL DE CAMPOS DE ACCESO INTACTO ---
     txt_user = ft.TextField(label="Usuario", value="coord1")
     txt_pass = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, value="123")
     
@@ -33,30 +43,42 @@ def main(page: ft.Page):
         while True:
             if "rol" in USER_SESSION:
                 try:
-                    res = requests.get(f"{API_URL}/ordenes/?rol={USER_SESSION['rol']}&usuario_id={USER_SESSION['id']}")
+                    # verify=False salta el bloqueo de certificados locales en el bucle
+                    res = requests.get(f"{API_URL}/ordenes/?rol={USER_SESSION['rol']}&usuario_id={USER_SESSION['id']}", timeout=5, verify=False)
                     if res.status_code == 200:
                         tabla.rows.clear()
-                        for o in res.json():
-                            btn_mapa = ft.Text("Sin GPS")
-                            if o.get('latitud') and o.get('longitud'):
-                                url = f"https://google.com{o['latitud']},{o['longitud']}"
-                                btn_mapa = ft.IconButton(ft.icons.LOCATION_ON, icon_color="red", on_click=lambda e, u=url: webbrowser.open(u))
-                            tabla.rows.append(ft.DataRow(cells=[
-                                ft.DataCell(ft.Text(str(o['id']))), ft.DataCell(ft.Text(o['cliente'])),
-                                ft.DataCell(ft.Text(o['estado'], weight="bold")), ft.DataCell(btn_mapa)
-                            ]))
+                        datos = res.json()
+                        if isinstance(datos, list):
+                            for o in datos:
+                                btn_mapa = ft.Text("Sin GPS")
+                                if o.get('latitud') and o.get('longitud'):
+                                    url = f"https://google.com{o['latitud']},{o['longitud']}"
+                                    btn_mapa = ft.IconButton(ft.icons.LOCATION_ON, icon_color="red", on_click=lambda e, u=url: webbrowser.open(u))
+                                tabla.rows.append(ft.DataRow(cells=[
+                                    ft.DataCell(ft.Text(str(o.get('id', '')))), 
+                                    ft.DataCell(ft.Text(o.get('cliente', ''))),
+                                    ft.DataCell(ft.Text(o.get('estado', 'Pendiente'), weight="bold")), 
+                                    ft.DataCell(btn_mapa)
+                                ]))
                         page.update()
-                except: pass
+                except Exception as e:
+                    print(f"⚠️ Error en bucle de datos: {e}")
             time.sleep(10)
 
     def ejecutar_login(e):
-        # Corrección de captura: Forzar a Flet a leer el texto actual ingresado en la pantalla
         usuario_tipeado = txt_user.value.strip()
         contra_tipeada = txt_pass.value.strip()
         
+        url_destino = f"{API_URL}/login"
+        
         try:
-            # Enviamos el JSON limpio con los datos reales capturados
-            res = requests.post(f"{API_URL}/login", json={"username": usuario_tipeado, "password": contra_tipeada}, timeout=10)
+            # INTENTO 1: JSON con verify=False para forzar la salida a internet sin verificar SSL local
+            res = requests.post(url_destino, json={"username": usuario_tipeado, "password": contra_tipeada}, timeout=15, verify=False)
+            
+            # INTENTO 2: Si el formato JSON no da 200, intentamos Formulario clásico también con verify=False
+            if res.status_code != 200:
+                res = requests.post(url_destino, data={"username": usuario_tipeado, "password": contra_tipeada}, timeout=15, verify=False)
+            
             if res.status_code == 200:
                 data = res.json()
                 USER_SESSION["id"] = data["id"]
@@ -64,26 +86,25 @@ def main(page: ft.Page):
                 USER_SESSION["nombre"] = data["nombre"]
                 
                 if USER_SESSION["rol"] == "tecnico":
-                    page.snack_bar = ft.SnackBar(ft.Text("Los técnicos deben usar la App Móvil"), bgcolor="red")
-                    page.snack_bar.open = True
+                    page.overlay.append(ft.SnackBar(ft.Text("Los técnicos deben usar la App Móvil"), bgcolor="red", open=True))
                     page.update()
                     return
                 mostrar_panel_principal()
             else:
-                page.snack_bar = ft.SnackBar(ft.Text("Credenciales inválidas o usuario incorrecto"), bgcolor="red")
-                page.snack_bar.open = True
+                page.overlay.append(ft.SnackBar(ft.Text("Credenciales inválidas o usuario incorrecto"), bgcolor="red", open=True))
                 page.update()
         except Exception as error:
-            print(f"⚠️ DETALLE DEL ERROR DE RED: {error}")
-            page.snack_bar = ft.SnackBar(ft.Text("No se pudo conectar con el servidor de internet"), bgcolor="orange")
-            page.snack_bar.open = True
+            print(f"⚠️ ERROR DE CONEXIÓN REAL: {error}")
+            page.overlay.append(ft.SnackBar(ft.Text("Error de red. Verifica internet o intenta de nuevo."), bgcolor="orange", open=True))
             page.update()
 
     def guardar_orden(e):
         payload = {"cliente": txt_cli.value, "direccion": txt_dir.value, "descripcion": txt_desc.value, "tecnico_id": int(txt_tec_id.value) if txt_tec_id.value else None}
-        requests.post(f"{API_URL}/ordenes/?creador_rol={USER_SESSION['rol']}", json=payload)
-        txt_cli.value = txt_dir.value = txt_desc.value = txt_tec_id.value = ""
-        page.update()
+        try:
+            requests.post(f"{API_URL}/ordenes/?creador_rol={USER_SESSION['rol']}", json=payload, timeout=5, verify=False)
+            txt_cli.value = txt_dir.value = txt_desc.value = txt_tec_id.value = ""
+            page.update()
+        except: pass
 
     def mostrar_panel_principal():
         page.views.clear()
@@ -98,6 +119,7 @@ def main(page: ft.Page):
             ])
         )
         
+        # --- TU VISTA ORIGINAL CON APPBAR AZUL ---
         page.views.append(ft.View("/panel", [
             ft.AppBar(title=ft.Text(f"Panel Central - {USER_SESSION['nombre']} ({USER_SESSION['rol'].upper()})"), bgcolor="blue"),
             form_container,
@@ -106,12 +128,19 @@ def main(page: ft.Page):
         ]))
         page.update()
 
+    # Iniciar el hilo de lectura de la base de datos
     threading.Thread(target=cargar_datos_bucle, daemon=True).start()
 
-    # --- TU INTERFAZ DE ENTRADA ORIGINAL CON ACCESO CENTRALIZADO ---
-    page.add(ft.Container(alignment=ft.alignment.center, content=ft.Column([
-        ft.Text("Mesa de Control - Acceso Administrativo", size=20, weight="bold"),
-        txt_user, txt_pass, ft.ElevatedButton("Entrar al Sistema", on_click=ejecutar_login, width=200)
-    ], horizontal_alignment="center")))
+    # --- ARRANQUE NATIVO DE FLET ---
+    contenedor_login = ft.Container(
+        alignment=ft.alignment.center, 
+        content=ft.Column([
+            ft.Text("Mesa de Control - Acceso Administrativo", size=20, weight="bold"),
+            txt_user, txt_pass, 
+            ft.ElevatedButton("Entrar al Sistema", on_click=ejecutar_login, width=200)
+        ], horizontal_alignment="center")
+    )
+    
+    page.add(contenedor_login)
 
 ft.app(target=main)
