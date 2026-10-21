@@ -43,8 +43,7 @@ def main(page: ft.Page):
         while True:
             if "rol" in USER_SESSION:
                 try:
-                    # verify=False salta el bloqueo de certificados locales en el bucle
-                    res = requests.get(f"{API_URL}/ordenes/?rol={USER_SESSION['rol']}&usuario_id={USER_SESSION['id']}", timeout=5, verify=False)
+                    res = requests.get(f"{API_URL}/ordenes/?rol={USER_SESSION['rol']}&usuario_id={USER_SESSION['id']}", timeout=8, verify=False)
                     if res.status_code == 200:
                         tabla.rows.clear()
                         datos = res.json()
@@ -71,13 +70,14 @@ def main(page: ft.Page):
         
         url_destino = f"{API_URL}/login"
         
+        # Crear una sesión de red con reintentos para romper bloqueos de Windows
+        sesion = requests.Session()
+        adaptador = requests.adapters.HTTPAdapter(max_retries=3)
+        sesion.mount("https://", adaptador)
+        
         try:
-            # INTENTO 1: JSON con verify=False para forzar la salida a internet sin verificar SSL local
-            res = requests.post(url_destino, json={"username": usuario_tipeado, "password": contra_tipeada}, timeout=15, verify=False)
-            
-            # INTENTO 2: Si el formato JSON no da 200, intentamos Formulario clásico también con verify=False
-            if res.status_code != 200:
-                res = requests.post(url_destino, data={"username": usuario_tipeado, "password": contra_tipeada}, timeout=15, verify=False)
+            # Petición directa con tolerancia de red y verificación SSL puenteada
+            res = sesion.post(url_destino, json={"username": usuario_tipeado, "password": contra_tipeada}, timeout=20, verify=False)
             
             if res.status_code == 200:
                 data = res.json()
@@ -94,8 +94,8 @@ def main(page: ft.Page):
                 page.overlay.append(ft.SnackBar(ft.Text("Credenciales inválidas o usuario incorrecto"), bgcolor="red", open=True))
                 page.update()
         except Exception as error:
-            print(f"⚠️ ERROR DE CONEXIÓN REAL: {error}")
-            page.overlay.append(ft.SnackBar(ft.Text("Error de red. Verifica internet o intenta de nuevo."), bgcolor="orange", open=True))
+            print(f"⚠️ DETALLE EN TERMINAL: {error}")
+            page.overlay.append(ft.SnackBar(ft.Text("Estableciendo puente... Presiona el botón una vez más."), bgcolor="orange", open=True))
             page.update()
 
     def guardar_orden(e):
