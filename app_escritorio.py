@@ -4,26 +4,18 @@ import time
 import threading
 import webbrowser
 
-# Desactivar advertencias visuales de SSL en la consola local
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 1. Dirección REAL y COMPLETA de tu servidor en Render
-API_URL = "https://onrender.com"
+# 1. Dirección REAL y CORRECTA de tu servidor en Render
+API_URL = "https://sistema-tecnicos-backend.onrender.com"
 USER_SESSION = {}
 
 def main(page: ft.Page):
     page.title = "Mesa de Control - Sistema de Control de Técnicos de Campo"
+    page.window.width = 950
+    page.window_height = 700
     
-    # Manejo compatible de dimensiones según tu versión de Flet
-    try:
-        page.window.width = 950
-        page.window_height = 700
-    except:
-        page.window_width = 950
-        page.window_height = 700
-    
-    # --- TU DISEÑO ORIGINAL DE CAMPOS DE ACCESO INTACTO ---
     txt_user = ft.TextField(label="Usuario", value="coord1")
     txt_pass = ft.TextField(label="Contraseña", password=True, can_reveal_password=True, value="123")
     
@@ -43,7 +35,7 @@ def main(page: ft.Page):
         while True:
             if "rol" in USER_SESSION:
                 try:
-                    res = requests.get(f"{API_URL}/ordenes/?rol={USER_SESSION['rol']}&usuario_id={USER_SESSION['id']}", timeout=8, verify=False)
+                    res = requests.get(f"{API_URL}/ordenes/?rol={USER_SESSION['rol']}&usuario_id={USER_SESSION['id']}", timeout=5, verify=False)
                     if res.status_code == 200:
                         tabla.rows.clear()
                         datos = res.json()
@@ -60,24 +52,16 @@ def main(page: ft.Page):
                                     ft.DataCell(btn_mapa)
                                 ]))
                         page.update()
-                except Exception as e:
-                    print(f"⚠️ Error en bucle de datos: {e}")
+                except: pass
             time.sleep(10)
 
     def ejecutar_login(e):
         usuario_tipeado = txt_user.value.strip()
         contra_tipeada = txt_pass.value.strip()
-        
         url_destino = f"{API_URL}/login"
         
-        # Crear una sesión de red con reintentos para romper bloqueos de Windows
-        sesion = requests.Session()
-        adaptador = requests.adapters.HTTPAdapter(max_retries=3)
-        sesion.mount("https://", adaptador)
-        
         try:
-            # Petición directa con tolerancia de red y verificación SSL puenteada
-            res = sesion.post(url_destino, json={"username": usuario_tipeado, "password": contra_tipeada}, timeout=20, verify=False)
+            res = requests.post(url_destino, json={"username": usuario_tipeado, "password": contra_tipeada}, timeout=15, verify=False)
             
             if res.status_code == 200:
                 data = res.json()
@@ -94,16 +78,12 @@ def main(page: ft.Page):
                 page.overlay.append(ft.SnackBar(ft.Text("Credenciales inválidas o usuario incorrecto"), bgcolor="red", open=True))
                 page.update()
         except Exception as error:
-            print(f"⚠️ DETALLE EN TERMINAL: {error}")
-            page.overlay.append(ft.SnackBar(ft.Text("Estableciendo puente... Presiona el botón una vez más."), bgcolor="orange", open=True))
+            page.overlay.append(ft.SnackBar(ft.Text("No se pudo conectar con el servidor"), bgcolor="orange", open=True))
             page.update()
 
     def guardar_orden(e):
         payload = {"cliente": txt_cli.value, "direccion": txt_dir.value, "descripcion": txt_desc.value, "tecnico_id": int(txt_tec_id.value) if txt_tec_id.value else None}
-        try:
-            requests.post(f"{API_URL}/ordenes/?creador_rol={USER_SESSION['rol']}", json=payload, timeout=5, verify=False)
-            txt_cli.value = txt_dir.value = txt_desc.value = txt_tec_id.value = ""
-            page.update()
+        try: requests.post(f"{API_URL}/ordenes/?creador_rol={USER_SESSION['rol']}", json=payload, timeout=5, verify=False)
         except: pass
 
     def mostrar_panel_principal():
@@ -111,7 +91,7 @@ def main(page: ft.Page):
         deshabilitar_creacion = USER_SESSION["rol"] not in ["coordinador", "gerente"]
         
         form_container = ft.Container(
-            padding=15, bgcolor=ft.colors.GREY_100, border_radius=10, disabled=deshabilitar_creacion,
+            padding=15, bgcolor=ft.Colors.GREY_100, border_radius=10, disabled=deshabilitar_creacion,
             content=ft.Column([
                 ft.Text("Nueva Orden de Trabajo (Solo Coordinación/Gerencia)", weight="bold"),
                 ft.Row([txt_cli, txt_tec_id]), ft.Row([txt_dir]), ft.Row([txt_desc]),
@@ -119,28 +99,21 @@ def main(page: ft.Page):
             ])
         )
         
-        # --- TU VISTA ORIGINAL CON APPBAR AZUL ---
+        # --- TU VISTA ORIGINAL CORREGIDA PARA EL SCROLL COMPATIBLE ---
         page.views.append(ft.View("/panel", [
             ft.AppBar(title=ft.Text(f"Panel Central - {USER_SESSION['nombre']} ({USER_SESSION['rol'].upper()})"), bgcolor="blue"),
             form_container,
             ft.Text("Monitoreo de Actividad de Campo", weight="bold"),
-            ft.Container(content=tabla, expand=True, scroll=ft.ScrollMode.ALWAYS)
+            # Corrección: Metemos la tabla en una columna con scroll nativo permitido por Flet
+            ft.Column([tabla], expand=True, scroll=ft.ScrollMode.ALWAYS)
         ]))
         page.update()
 
-    # Iniciar el hilo de lectura de la base de datos
     threading.Thread(target=cargar_datos_bucle, daemon=True).start()
 
-    # --- ARRANQUE NATIVO DE FLET ---
-    contenedor_login = ft.Container(
-        alignment=ft.alignment.center, 
-        content=ft.Column([
-            ft.Text("Mesa de Control - Acceso Administrativo", size=20, weight="bold"),
-            txt_user, txt_pass, 
-            ft.ElevatedButton("Entrar al Sistema", on_click=ejecutar_login, width=200)
-        ], horizontal_alignment="center")
-    )
-    
-    page.add(contenedor_login)
+    page.add(ft.Container(alignment=ft.alignment.center, content=ft.Column([
+        ft.Text("Mesa de Control - Acceso Administrativo", size=20, weight="bold"),
+        txt_user, txt_pass, ft.ElevatedButton("Entrar al Sistema", on_click=ejecutar_login, width=200)
+    ], horizontal_alignment="center")))
 
 ft.app(target=main)
