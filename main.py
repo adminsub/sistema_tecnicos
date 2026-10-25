@@ -85,36 +85,22 @@ def registrar_usuario(datos: UserCreateRequest):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT INTO usuarios VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (
+        cursor.execute("INSERT OR REPLACE INTO usuarios VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (
             datos.id_p00.strip(), datos.id_carnet.strip() if datos.id_carnet else None,
             datos.correo.strip(), datos.clave.strip(), datos.nombres.strip(), datos.apellidos.strip(),
             datos.cedula.strip(), datos.tipo_sangre.strip() if datos.tipo_sangre else None,
             datos.area_tipo, datos.area_valor, datos.rol
         ))
         conn.commit()
-        return {"status": "creado"}
+        return {"status": "ok"}
     except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail="El ID o Correo ya existen")
+        raise HTTPException(status_code=400, detail="Error de integridad de datos")
     finally:
         conn.close()
 
 @app.post("/usuarios/actualizar")
 def actualizar_usuario(datos: UserCreateRequest):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE usuarios SET 
-        id_carnet=?, correo=?, clave=?, nombres=?, apellidos=?, 
-        cedula=?, tipo_sangre=?, area_tipo=?, area_valor=?, rol=?
-        WHERE id_p00=?
-    """, (
-        datos.id_carnet, datos.correo, datos.clave, datos.nombres, datos.apellidos,
-        datos.cedula, datos.tipo_sangre, datos.area_tipo, datos.area_valor, datos.rol,
-        datos.id_p00
-    ))
-    conn.commit()
-    conn.close()
-    return {"status": "actualizado"}
+    return registrar_usuario(datos)
 
 @app.delete("/usuarios/eliminar/{id_p00}")
 def eliminar_usuario(id_p00: str):

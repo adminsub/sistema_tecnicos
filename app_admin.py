@@ -29,31 +29,26 @@ def main(page: ft.Page):
     txt_sangre = ft.TextField(label="Tipo de Sangre", value="O+", width=120)
 
     dropdown_rol = ft.Dropdown(
-        label="Rol del Usuario",
-        width=200,
+        label="Rol del Usuario", width=200,
         options=[
             ft.dropdown.Option("admin", "Administrador"),
             ft.dropdown.Option("coordinador", "Coordinador"),
             ft.dropdown.Option("supervisor", "Supervisor"),
             ft.dropdown.Option("tecnico", "Técnico de Campo")
-        ],
-        value="tecnico"
+        ], value="tecnico"
     )
 
     dropdown_area_tipo = ft.Dropdown(
-        label="Tipo de Cobertura",
-        width=180,
+        label="Tipo de Cobertura", width=180,
         options=[
             ft.dropdown.Option("numero", "Por Área (1-10)"),
             ft.dropdown.Option("estadal", "Estadal (Todas)")
-        ],
-        value="numero",
+        ], value="numero",
         on_change=lambda e: actualizar_visibilidad_areas()
     )
 
     dropdown_area_valor = ft.Dropdown(
-        label="Selección de Área",
-        width=180,
+        label="Selección de Área", width=180,
         options=[ft.dropdown.Option(str(i), f"Área {i}") for i in range(1, 11)],
         value="1"
     )
@@ -97,7 +92,7 @@ def main(page: ft.Page):
         btn_guardar.text = "Actualizar Cambios"
         btn_eliminar.visible = True
         btn_cancelar.visible = True
-        page.update()
+        mostrar_panel_admin() # Forzar redibujado de la interfaz con los nuevos botones
 
     def limpiar_formulario():
         global USUARIO_SELECCIONADO_ID
@@ -111,10 +106,11 @@ def main(page: ft.Page):
         btn_guardar.text = "Guardar"
         btn_eliminar.visible = False
         btn_cancelar.visible = False
-        page.update()
-    def refrescar_tabla_usuarios(lista):
+        mostrar_panel_admin()
+    def generar_filas_tabla():
+        """Genera dinámicamente las celdas de la tabla garantizando persistencia en Flet"""
         tabla_usuarios.rows.clear()
-        for u in lista:
+        for u in LISTA_USUARIOS_LOCALES:
             cobertura = f"Estadal ({u['area_valor']})" if u['area_tipo'] == "estadal" else f"Área Num. {u['area_valor']}"
             tabla_usuarios.rows.append(ft.DataRow(
                 cells=[
@@ -126,10 +122,8 @@ def main(page: ft.Page):
                 ],
                 on_select_changed=lambda e, user=u: seleccionar_usuario_para_editar(user)
             ))
-        page.update()
 
     def consultar_usuarios_servidor():
-        """Descarga la lista en tiempo real desde la base de datos en internet (Render)"""
         global LISTA_USUARIOS_LOCALES
         try:
             res = requests.get(f"{API_URL}/usuarios/listar", timeout=6, verify=False)
@@ -138,8 +132,7 @@ def main(page: ft.Page):
                 if isinstance(datos, list):
                     LISTA_USUARIOS_LOCALES = datos
                     return
-        except:
-            pass
+        except: pass
 
     def cerrar_sesion_admin(e):
         global SESSION_ADMIN
@@ -169,31 +162,24 @@ def main(page: ft.Page):
             try: requests.post(f"{API_URL}/usuarios/registrar", json=payload, timeout=4, verify=False)
             except: pass
 
-        # Forzar descarga inmediata del servidor para sincronizar
         consultar_usuarios_servidor()
-        refrescar_tabla_usuarios(LISTA_USUARIOS_LOCALES)
         limpiar_formulario()
-        page.overlay.append(ft.SnackBar(ft.Text("Base de datos sincronizada con éxito."), bgcolor="green", open=True))
-        page.update()
+        page.overlay.append(ft.SnackBar(ft.Text("Base de datos sincronizada."), bgcolor="green", open=True))
 
     def ejecutar_eliminacion(e):
         global LISTA_USUARIOS_LOCALES
         if not USUARIO_SELECCIONADO_ID: return
         try: requests.delete(f"{API_URL}/usuarios/eliminar/{USUARIO_SELECCIONADO_ID}", timeout=4, verify=False)
         except: pass
-        
         consultar_usuarios_servidor()
-        refrescar_tabla_usuarios(LISTA_USUARIOS_LOCALES)
         limpiar_formulario()
         page.overlay.append(ft.SnackBar(ft.Text("Usuario removido permanente."), bgcolor="red", open=True))
-        page.update()
 
     def autenticar_admin(e):
         if txt_user.value.strip() == "admin@sistema.com" and txt_pass.value.strip() == "admin123":
             SESSION_ADMIN["rol"] = "admin"
-            consultar_usuarios_servidor()  # <-- DESCARGA EN VIVO AL ENTRAR
+            consultar_usuarios_servidor()
             mostrar_panel_admin()
-            refrescar_tabla_usuarios(LISTA_USUARIOS_LOCALES)
         else:
             page.overlay.append(ft.SnackBar(ft.Text("Acceso denegado."), bgcolor="red", open=True))
             page.update()
@@ -216,6 +202,8 @@ def main(page: ft.Page):
 
     def mostrar_panel_admin():
         page.views.clear()
+        generar_filas_tabla() # Reconstrucción total de las celdas antes de renderizar la vista
+        
         formulario = ft.Container(
             padding=15, bgcolor=ft.Colors.GREY_100, border_radius=10,
             content=ft.Column([
