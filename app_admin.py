@@ -7,6 +7,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 API_URL = "https://onrender.com"
 SESSION_ADMIN = {}
 LISTA_USUARIOS_LOCALES = []
+USUARIO_SELECCIONADO_ID = None
 
 def main(page: ft.Page):
     page.title = "Módulo de Administración - Gestión de Usuarios"
@@ -57,6 +58,10 @@ def main(page: ft.Page):
         value="1"
     )
 
+    btn_guardar = ft.ElevatedButton("Guardar", bgcolor="purple", color="white")
+    btn_eliminar = ft.ElevatedButton("Eliminar Usuario", bgcolor="red", color="white", visible=False)
+    btn_cancelar = ft.TextButton("Cancelar Edición", visible=False)
+
     tabla_usuarios = ft.DataTable(columns=[
         ft.DataColumn(ft.Text("ID P00")), ft.DataColumn(ft.Text("Nombre")),
         ft.DataColumn(ft.Text("Correo")), ft.DataColumn(ft.Text("Rol")),
@@ -71,18 +76,76 @@ def main(page: ft.Page):
             dropdown_area_valor.options = [ft.dropdown.Option(str(i), f"Área {i}") for i in range(1, 11)]
             dropdown_area_valor.value = "1"
         page.update()
+
+    def seleccionar_usuario_para_editar(u):
+        global USUARIO_SELECCIONADO_ID
+        USUARIO_SELECCIONADO_ID = u['id_p00']
+        txt_p00.value = u['id_p00']
+        txt_p00.disabled = True
+        txt_carnet.value = u.get('id_carnet', '') if u.get('id_carnet') else ""
+        txt_correo.value = u['correo']
+        txt_clave.value = u.get('clave', '') if u.get('clave') else ""
+        txt_nombres.value = u['nombres']
+        txt_apellidos.value = u['apellidos']
+        txt_cedula.value = u.get('cedula', '') if u.get('cedula') else ""
+        txt_sangre.value = u.get('tipo_sangre', 'O+')
+        dropdown_rol.value = u['rol']
+        dropdown_area_tipo.value = u['area_tipo']
+        actualizar_visibilidad_areas()
+        dropdown_area_valor.value = u['area_valor']
+        
+        btn_guardar.text = "Actualizar Cambios"
+        btn_eliminar.visible = True
+        btn_cancelar.visible = True
+        page.update()
+
+    def limpiar_formulario():
+        global USUARIO_SELECCIONADO_ID
+        USUARIO_SELECCIONADO_ID = None
+        txt_p00.value = txt_carnet.value = txt_correo.value = txt_clave.value = ""
+        txt_nombres.value = txt_apellidos.value = txt_cedula.value = ""
+        txt_p00.disabled = False
+        dropdown_rol.value = "tecnico"
+        dropdown_area_tipo.value = "numero"
+        actualizar_visibilidad_areas()
+        btn_guardar.text = "Guardar"
+        btn_eliminar.visible = False
+        btn_cancelar.visible = False
+        page.update()
     def refrescar_tabla_usuarios(lista):
         tabla_usuarios.rows.clear()
         for u in lista:
             cobertura = f"Estadal ({u['area_valor']})" if u['area_tipo'] == "estadal" else f"Área Num. {u['area_valor']}"
-            tabla_usuarios.rows.append(ft.DataRow(cells=[
-                ft.DataCell(ft.Text(u['id_p00'], weight="bold")),
-                ft.DataCell(ft.Text(f"{u['nombres']} {u['apellidos']}")),
-                ft.DataCell(ft.Text(u['correo'])),
-                ft.DataCell(ft.Text(u['rol'].upper())),
-                ft.DataCell(ft.Text(cobertura))
-            ]))
+            tabla_usuarios.rows.append(ft.DataRow(
+                cells=[
+                    ft.DataCell(ft.Text(u['id_p00'], weight="bold")),
+                    ft.DataCell(ft.Text(f"{u['nombres']} {u['apellidos']}")),
+                    ft.DataCell(ft.Text(u['correo'])),
+                    ft.DataCell(ft.Text(u['rol'].upper())),
+                    ft.DataCell(ft.Text(cobertura))
+                ],
+                on_select_changed=lambda e, user=u: seleccionar_usuario_para_editar(user)
+            ))
         page.update()
+
+    def consultar_usuarios_servidor():
+        """Descarga la lista en tiempo real desde la base de datos en internet (Render)"""
+        global LISTA_USUARIOS_LOCALES
+        try:
+            res = requests.get(f"{API_URL}/usuarios/listar", timeout=6, verify=False)
+            if res.status_code == 200:
+                datos = res.json()
+                if isinstance(datos, list):
+                    LISTA_USUARIOS_LOCALES = datos
+                    return
+        except:
+            pass
+
+    def cerrar_sesion_admin(e):
+        global SESSION_ADMIN
+        SESSION_ADMIN.clear()
+        limpiar_formulario()
+        mostrar_login_inicial()
 
     def guardar_usuario(e):
         global LISTA_USUARIOS_LOCALES
@@ -96,61 +159,87 @@ def main(page: ft.Page):
             "correo": txt_correo.value.strip(), "clave": txt_clave.value.strip() if txt_clave.value.strip() else "123",
             "nombres": txt_nombres.value.strip(), "apellidos": txt_apellidos.value.strip(),
             "cedula": txt_cedula.value.strip(), "tipo_sangre": txt_sangre.value.strip(),
-            "area_tipo": dropdown_area_tipo.value, "area_valor": dropdown_area_valor.value,
-            "rol": dropdown_rol.value
+            "area_tipo": dropdown_area_tipo.value, "area_valor": dropdown_area_valor.value, "rol": dropdown_rol.value
         }
 
-        try:
-            requests.post(f"{API_URL}/usuarios/registrar", json=payload, timeout=5, verify=False)
-        except:
-            pass
+        if USUARIO_SELECCIONADO_ID:
+            try: requests.post(f"{API_URL}/usuarios/actualizar", json=payload, timeout=4, verify=False)
+            except: pass
+        else:
+            try: requests.post(f"{API_URL}/usuarios/registrar", json=payload, timeout=4, verify=False)
+            except: pass
 
-        LISTA_USUARIOS_LOCALES.append(payload)
+        # Forzar descarga inmediata del servidor para sincronizar
+        consultar_usuarios_servidor()
         refrescar_tabla_usuarios(LISTA_USUARIOS_LOCALES)
+        limpiar_formulario()
+        page.overlay.append(ft.SnackBar(ft.Text("Base de datos sincronizada con éxito."), bgcolor="green", open=True))
+        page.update()
 
-        # Limpiar campos del formulario
-        txt_p00.value = txt_carnet.value = txt_correo.value = txt_clave.value = ""
-        txt_nombres.value = txt_apellidos.value = txt_cedula.value = ""
-        page.overlay.append(ft.SnackBar(ft.Text("Usuario registrado con éxito en el sistema"), bgcolor="green", open=True))
+    def ejecutar_eliminacion(e):
+        global LISTA_USUARIOS_LOCALES
+        if not USUARIO_SELECCIONADO_ID: return
+        try: requests.delete(f"{API_URL}/usuarios/eliminar/{USUARIO_SELECCIONADO_ID}", timeout=4, verify=False)
+        except: pass
+        
+        consultar_usuarios_servidor()
+        refrescar_tabla_usuarios(LISTA_USUARIOS_LOCALES)
+        limpiar_formulario()
+        page.overlay.append(ft.SnackBar(ft.Text("Usuario removido permanente."), bgcolor="red", open=True))
         page.update()
 
     def autenticar_admin(e):
         if txt_user.value.strip() == "admin@sistema.com" and txt_pass.value.strip() == "admin123":
             SESSION_ADMIN["rol"] = "admin"
+            consultar_usuarios_servidor()  # <-- DESCARGA EN VIVO AL ENTRAR
             mostrar_panel_admin()
             refrescar_tabla_usuarios(LISTA_USUARIOS_LOCALES)
         else:
-            page.overlay.append(ft.SnackBar(ft.Text("Acceso denegado. Use credenciales de Admin maestro"), bgcolor="red", open=True))
+            page.overlay.append(ft.SnackBar(ft.Text("Acceso denegado."), bgcolor="red", open=True))
             page.update()
+
+    def mostrar_login_inicial():
+        page.views.clear()
+        page.views.append(ft.View("/login", [
+            ft.AppBar(title=ft.Text("Acceso Administrativo"), bgcolor="purple", color="white"),
+            ft.Container(
+                alignment=ft.alignment.center, padding=50,
+                content=ft.Column([
+                    ft.Icon(ft.icons.ADMIN_PANEL_SETTINGS, size=60, color="purple"),
+                    ft.Text("Módulo de Configuración Base", size=20, weight="bold"),
+                    txt_user, txt_pass, 
+                    ft.ElevatedButton("Ingresar", on_click=autenticar_admin, width=220, bgcolor="purple", color="white")
+                ], horizontal_alignment="center")
+            )
+        ]))
+        page.update()
 
     def mostrar_panel_admin():
         page.views.clear()
-        
         formulario = ft.Container(
             padding=15, bgcolor=ft.Colors.GREY_100, border_radius=10,
             content=ft.Column([
-                ft.Text("Registrar Nuevo Personal (Mesa de Control y Campo)", weight="bold", size=16),
+                ft.Text("Gestión Integral de Personal (Mesa de Control y Campo)", weight="bold", size=16),
                 ft.Row([txt_p00, txt_carnet, txt_correo, txt_clave]),
                 ft.Row([txt_nombres, txt_apellidos, txt_cedula, txt_sangre]),
                 ft.Row([dropdown_rol, dropdown_area_tipo, dropdown_area_valor]),
-                ft.ElevatedButton("Dar de Alta en Base de Datos", on_click=guardar_usuario, bgcolor="purple", color="white")
+                ft.Row([btn_guardar, btn_eliminar, btn_cancelar], spacing=10)
             ])
         )
-
         page.views.append(ft.View("/admin-panel", [
-            ft.AppBar(title=ft.Text("Panel de Control del Administrador - Configuración del Sistema"), bgcolor="purple", color="white"),
-            formulario,
-            ft.Divider(),
-            ft.Text("Listado Oficial de Usuarios en Base de Datos", weight="bold"),
+            ft.AppBar(
+                title=ft.Text("Panel del Administrador"), bgcolor="purple", color="white",
+                actions=[ft.IconButton(ft.icons.LOGOUT, icon_color="white", tooltip="Cerrar Sesión", on_click=cerrar_sesion_admin)]
+            ),
+            formulario, ft.Divider(),
             ft.Column([tabla_usuarios], expand=True, scroll=ft.ScrollMode.ALWAYS)
         ]))
         page.update()
 
-    # Pantalla de acceso inicial
-    page.add(ft.Container(alignment=ft.alignment.center, content=ft.Column([
-        ft.Icon(ft.icons.ADMIN_PANEL_SETTINGS, size=60, color="purple"),
-        ft.Text("Acceso exclusivo del Administrador", size=20, weight="bold"),
-        txt_user, txt_pass, ft.ElevatedButton("Ingresar al Módulo", on_click=autenticar_admin, width=220, bgcolor="purple", color="white")
-    ], horizontal_alignment="center")))
+    btn_guardar.on_click = guardar_usuario
+    btn_eliminar.on_click = ejecutar_eliminacion
+    btn_cancelar.on_click = lambda e: limpiar_formulario()
+
+    mostrar_login_inicial()
 
 ft.app(target=main)
