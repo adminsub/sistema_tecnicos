@@ -35,7 +35,7 @@ def init_db():
         )
     """)
     cursor.execute("SELECT COUNT(*) FROM usuarios WHERE id_p00 = 'P001'")
-    if cursor.fetchone()[0] == 0:
+    if cursor.fetchone() == 0:
         cursor.execute("""
             INSERT INTO usuarios VALUES (
                 'P001', 'C-ADMIN-01', 'admin@sistema.com', 'admin123',
@@ -121,8 +121,16 @@ def listar_usuarios():
     resultado = []
     for r in rows:
         resultado.append({
-            "id_p00": r[0], "id_carnet": r[1], "correo": r[2], "nombres": r[3],
-            "apellidos": r[4], "cedula": r[5], "tipo_sangre": r[6], "area_tipo": r[7],
-            "area_valor": r[8], "rol": r[9]
+            "id_p00": r[0],
+            "id_carnet": r[1],
+            "correo": r[2],
+            "clave": r[3],
+            "nombres": r[4],
+            "apellidos": r[5],
+            "cedula": r[6],
+            "tipo_sangre": r[7],
+            "area_tipo": r[8],
+            "area_valor": r[9],
+            "rol": r[10]
         })
     return resultado

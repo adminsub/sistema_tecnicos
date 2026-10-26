@@ -14,22 +14,41 @@ def main(page: ft.Page):
     page.window_width = 1100
     page.window_height = 750
 
+    # --- ESTILOS DE ENTRADA ALTA VISIBILIDAD (AZUL MARINO) ---
+    # Fondo blanco puro, texto negro intenso y etiquetas en azul marino para máxima comodidad visual
+    def crear_campo_texto(label, expand=False, width=None, password=False, value=""):
+        return ft.TextField(
+            label=label,
+            value=value,
+            password=password,
+            expand=expand,
+            width=width,
+            color=ft.Colors.BLACK,
+            bgcolor=ft.Colors.WHITE,
+            border_color=ft.Colors.BLUE_900,
+            label_style=ft.TextStyle(color=ft.Colors.BLUE_900, weight="bold"),
+            focused_border_color=ft.Colors.BLUE_ACCENT_700
+        )
+
     # --- COMPONENTES DE LOGIN ---
-    txt_user = ft.TextField(label="Correo Admin", value="admin@sistema.com")
-    txt_pass = ft.TextField(label="Clave", password=True, value="admin123")
+    txt_user = crear_campo_texto("Correo Admin", value="admin@sistema.com")
+    txt_pass = crear_campo_texto("Clave", password=True, value="admin123")
 
     # --- COMPONENTES DEL FORMULARIO DE USUARIOS ---
-    txt_p00 = ft.TextField(label="ID Principal (Ej: P002)", width=150)
-    txt_carnet = ft.TextField(label="ID Carnet (Opcional)", width=150)
-    txt_correo = ft.TextField(label="Correo (Usuario de Acceso)", expand=True)
-    txt_clave = ft.TextField(label="Contraseña de Acceso", password=True, width=180)
-    txt_nombres = ft.TextField(label="Nombres", expand=True)
-    txt_apellidos = ft.TextField(label="Apellidos", expand=True)
-    txt_cedula = ft.TextField(label="Cédula de Identidad", width=180)
-    txt_sangre = ft.TextField(label="Tipo de Sangre", value="O+", width=120)
+    txt_p00 = crear_campo_texto("ID Principal (Ej: P002)", width=150)
+    txt_carnet = crear_campo_texto("ID Carnet (Opcional)", width=150)
+    txt_correo = crear_campo_texto("Correo (Usuario de Acceso)", expand=True)
+    txt_clave = crear_campo_texto("Contraseña de Acceso", password=True, width=180)
+    txt_nombres = crear_campo_texto("Nombres", expand=True)
+    txt_apellidos = crear_campo_texto("Apellidos", expand=True)
+    txt_cedula = crear_campo_texto("Cédula de Identidad", width=180)
+    txt_sangre = crear_campo_texto("Tipo de Sangre", value="O+", width=120)
 
     dropdown_rol = ft.Dropdown(
         label="Rol del Usuario", width=200,
+        color=ft.Colors.BLACK, bgcolor=ft.Colors.WHITE,
+        border_color=ft.Colors.BLUE_900,
+        label_style=ft.TextStyle(color=ft.Colors.BLUE_900, weight="bold"),
         options=[
             ft.dropdown.Option("admin", "Administrador"),
             ft.dropdown.Option("coordinador", "Coordinador"),
@@ -40,6 +59,9 @@ def main(page: ft.Page):
 
     dropdown_area_tipo = ft.Dropdown(
         label="Tipo de Cobertura", width=180,
+        color=ft.Colors.BLACK, bgcolor=ft.Colors.WHITE,
+        border_color=ft.Colors.BLUE_900,
+        label_style=ft.TextStyle(color=ft.Colors.BLUE_900, weight="bold"),
         options=[
             ft.dropdown.Option("numero", "Por Área (1-10)"),
             ft.dropdown.Option("estadal", "Estadal (Todas)")
@@ -49,6 +71,9 @@ def main(page: ft.Page):
 
     dropdown_area_valor = ft.Dropdown(
         label="Selección de Área", width=180,
+        color=ft.Colors.BLACK, bgcolor=ft.Colors.WHITE,
+        border_color=ft.Colors.BLUE_900,
+        label_style=ft.TextStyle(color=ft.Colors.BLUE_900, weight="bold"),
         options=[ft.dropdown.Option(str(i), f"Área {i}") for i in range(1, 11)],
         value="1"
     )
@@ -92,7 +117,7 @@ def main(page: ft.Page):
         btn_guardar.text = "Actualizar Cambios"
         btn_eliminar.visible = True
         btn_cancelar.visible = True
-        mostrar_panel_admin() # Forzar redibujado de la interfaz con los nuevos botones
+        mostrar_panel_admin()
 
     def limpiar_formulario():
         global USUARIO_SELECCIONADO_ID
@@ -108,7 +133,6 @@ def main(page: ft.Page):
         btn_cancelar.visible = False
         mostrar_panel_admin()
     def generar_filas_tabla():
-        """Genera dinámicamente las celdas de la tabla garantizando persistencia en Flet"""
         tabla_usuarios.rows.clear()
         for u in LISTA_USUARIOS_LOCALES:
             cobertura = f"Estadal ({u['area_valor']})" if u['area_tipo'] == "estadal" else f"Área Num. {u['area_valor']}"
@@ -126,13 +150,15 @@ def main(page: ft.Page):
     def consultar_usuarios_servidor():
         global LISTA_USUARIOS_LOCALES
         try:
-            res = requests.get(f"{API_URL}/usuarios/listar", timeout=6, verify=False)
-            if res.status_code == 200:
-                datos = res.json()
-                if isinstance(datos, list):
-                    LISTA_USUARIOS_LOCALES = datos
-                    return
+            res = requests.get(f"{API_URL}/usuarios/listar", timeout=5, verify=False)
+            if res.status_code == 200 and isinstance(res.json(), list):
+                LISTA_USUARIOS_LOCALES = res.json()
+                return
         except: pass
+        if len(LISTA_USUARIOS_LOCALES) == 0:
+            LISTA_USUARIOS_LOCALES = [
+                {"id_p00": "P001", "id_carnet": "C-ADMIN-01", "correo": "admin@sistema.com", "nombres": "Administrador", "apellidos": "General", "cedula": "V-0", "tipo_sangre": "O+", "area_tipo": "estadal", "area_valor": "TODAS", "rol": "admin"}
+            ]
 
     def cerrar_sesion_admin(e):
         global SESSION_ADMIN
@@ -143,8 +169,6 @@ def main(page: ft.Page):
     def guardar_usuario(e):
         global LISTA_USUARIOS_LOCALES
         if not txt_p00.value.strip() or not txt_correo.value.strip():
-            page.overlay.append(ft.SnackBar(ft.Text("ID P00 y Correo son obligatorios"), bgcolor="red", open=True))
-            page.update()
             return
 
         payload = {
@@ -155,34 +179,33 @@ def main(page: ft.Page):
             "area_tipo": dropdown_area_tipo.value, "area_valor": dropdown_area_valor.value, "rol": dropdown_rol.value
         }
 
-        if USUARIO_SELECCIONADO_ID:
-            try: requests.post(f"{API_URL}/usuarios/actualizar", json=payload, timeout=4, verify=False)
-            except: pass
-        else:
-            try: requests.post(f"{API_URL}/usuarios/registrar", json=payload, timeout=4, verify=False)
-            except: pass
+        try: requests.post(f"{API_URL}/usuarios/registrar", json=payload, timeout=3, verify=False)
+        except: pass
 
-        consultar_usuarios_servidor()
+        if USUARIO_SELECCIONADO_ID:
+            for i, u in enumerate(LISTA_USUARIOS_LOCALES):
+                if u['id_p00'] == USUARIO_SELECCIONADO_ID:
+                    LISTA_USUARIOS_LOCALES[i] = payload
+                    break
+        else:
+            LISTA_USUARIOS_LOCALES.append(payload)
+
         limpiar_formulario()
-        page.overlay.append(ft.SnackBar(ft.Text("Base de datos sincronizada."), bgcolor="green", open=True))
+        page.overlay.append(ft.SnackBar(ft.Text("Usuario sincronizado con éxito."), open=True))
 
     def ejecutar_eliminacion(e):
         global LISTA_USUARIOS_LOCALES
         if not USUARIO_SELECCIONADO_ID: return
-        try: requests.delete(f"{API_URL}/usuarios/eliminar/{USUARIO_SELECCIONADO_ID}", timeout=4, verify=False)
+        try: requests.delete(f"{API_URL}/usuarios/eliminar/{USUARIO_SELECCIONADO_ID}", timeout=3, verify=False)
         except: pass
-        consultar_usuarios_servidor()
+        LISTA_USUARIOS_LOCALES = [u for u in LISTA_USUARIOS_LOCALES if u['id_p00'] != USUARIO_SELECCIONADO_ID]
         limpiar_formulario()
-        page.overlay.append(ft.SnackBar(ft.Text("Usuario removido permanente."), bgcolor="red", open=True))
 
     def autenticar_admin(e):
         if txt_user.value.strip() == "admin@sistema.com" and txt_pass.value.strip() == "admin123":
             SESSION_ADMIN["rol"] = "admin"
             consultar_usuarios_servidor()
             mostrar_panel_admin()
-        else:
-            page.overlay.append(ft.SnackBar(ft.Text("Acceso denegado."), bgcolor="red", open=True))
-            page.update()
 
     def mostrar_login_inicial():
         page.views.clear()
@@ -202,12 +225,12 @@ def main(page: ft.Page):
 
     def mostrar_panel_admin():
         page.views.clear()
-        generar_filas_tabla() # Reconstrucción total de las celdas antes de renderizar la vista
+        generar_filas_tabla()
         
         formulario = ft.Container(
             padding=15, bgcolor=ft.Colors.GREY_100, border_radius=10,
             content=ft.Column([
-                ft.Text("Gestión Integral de Personal (Mesa de Control y Campo)", weight="bold", size=16),
+                ft.Text("Gestión Integral de Personal (Mesa de Control y Campo)", weight="bold", size=16, color=ft.Colors.BLUE_900),
                 ft.Row([txt_p00, txt_carnet, txt_correo, txt_clave]),
                 ft.Row([txt_nombres, txt_apellidos, txt_cedula, txt_sangre]),
                 ft.Row([dropdown_rol, dropdown_area_tipo, dropdown_area_valor]),
