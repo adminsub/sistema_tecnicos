@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
-import sqlite3
+from typing import Optional
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = FastAPI(title="Sistema de Control - Módulo Admin")
 
@@ -14,10 +15,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_NAME = "sistema.db"
+# ⚠️ CADENA DE CONEXIÓN DE NEON.TECH
+DB_URL = "postgresql://neondb_owner:npg_9lCoVdUr1Lqu@ep-floral-glitter-b5jqokc6-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+def get_db_connection():
+    return psycopg2.connect(DB_URL)
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
@@ -35,7 +40,7 @@ def init_db():
         )
     """)
     cursor.execute("SELECT COUNT(*) FROM usuarios WHERE id_p00 = 'P001'")
-    if cursor.fetchone() == 0:
+    if cursor.fetchone()[0] == 0:
         cursor.execute("""
             INSERT INTO usuarios VALUES (
                 'P001', 'C-ADMIN-01', 'admin@sistema.com', 'admin123',
@@ -44,6 +49,7 @@ def init_db():
             )
         """)
     conn.commit()
+    cursor.close()
     conn.close()
 
 init_db()
@@ -67,25 +73,33 @@ class LoginRequest(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"status": "ok", "message": "Servidor Activo"}
+    return {"status": "ok", "message": "Servidor con PostgreSQL Activo"}
 
 @app.post("/login")
 def login(datos: LoginRequest):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id_p00, nombres, rol, clave FROM usuarios WHERE correo = ?", (datos.username.strip(),))
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    cursor.execute("SELECT id_p00, nombres, rol, clave FROM usuarios WHERE correo = %s", (datos.username.strip(),))
     user = cursor.fetchone()
+    cursor.close()
     conn.close()
-    if user and user[3] == datos.password.strip():
-        return {"id": user[0], "nombre": user[1], "rol": user[2]}
+    if user and user["clave"] == datos.password.strip():
+        return {"id": user["id_p00"], "nombre": user["nombres"], "rol": user["rol"]}
     raise HTTPException(status_code=400, detail="Credenciales inválidas")
 
 @app.post("/usuarios/registrar")
 def registrar_usuario(datos: UserCreateRequest):
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT OR REPLACE INTO usuarios VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (
+        cursor.execute("""
+            INSERT INTO usuarios VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id_p00) DO UPDATE SET
+            id_carnet=EXCLUDED.id_carnet, correo=EXCLUDED.correo, clave=EXCLUDED.clave,
+            nombres=EXCLUDED.nombres, apellidos=EXCLUDED.apellidos, cedula=EXCLUDED.cedula,
+            tipo_sangre=EXCLUDED.tipo_sangre, area_tipo=EXCLUDED.area_tipo,
+            area_valor=EXCLUDED.area_valor, rol=EXCLUDED.rol
+        """, (
             datos.id_p00.strip(), datos.id_carnet.strip() if datos.id_carnet else None,
             datos.correo.strip(), datos.clave.strip(), datos.nombres.strip(), datos.apellidos.strip(),
             datos.cedula.strip(), datos.tipo_sangre.strip() if datos.tipo_sangre else None,
@@ -93,9 +107,10 @@ def registrar_usuario(datos: UserCreateRequest):
         ))
         conn.commit()
         return {"status": "ok"}
-    except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail="Error de integridad de datos")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
+        cursor.close()
         conn.close()
 
 @app.post("/usuarios/actualizar")
@@ -104,33 +119,20 @@ def actualizar_usuario(datos: UserCreateRequest):
 
 @app.delete("/usuarios/eliminar/{id_p00}")
 def eliminar_usuario(id_p00: str):
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM usuarios WHERE id_p00 = ?", (id_p00,))
+    cursor.execute("DELETE FROM usuarios WHERE id_p00 = %s", (id_p00,))
     conn.commit()
+    cursor.close()
     conn.close()
     return {"status": "eliminado"}
 
 @app.get("/usuarios/listar")
 def listar_usuarios():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT id_p00, id_carnet, correo, nombres, apellidos, cedula, tipo_sangre, area_tipo, area_valor, rol FROM usuarios")
     rows = cursor.fetchall()
+    cursor.close()
     conn.close()
-    resultado = []
-    for r in rows:
-        resultado.append({
-            "id_p00": r[0],
-            "id_carnet": r[1],
-            "correo": r[2],
-            "clave": r[3],
-            "nombres": r[4],
-            "apellidos": r[5],
-            "cedula": r[6],
-            "tipo_sangre": r[7],
-            "area_tipo": r[8],
-            "area_valor": r[9],
-            "rol": r[10]
-        })
-    return resultado
+    return rows
